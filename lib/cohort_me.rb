@@ -14,6 +14,7 @@ module CohortMe
     activity_class = options[:activity_class] || activation_class
     activity_table_name = ActiveModel::Naming.plural(activity_class)
     activity_user_id = options[:activity_user_id] || "user_id"
+    activity_date_field = options[:activity_date_field] || "created_at"
 
     period_values = %w[weeks days months]
 
@@ -41,10 +42,9 @@ module CohortMe
     end
 
     if %(mysql mysql2).include?(ActiveRecord::Base.connection.instance_values["config"][:adapter])
-    
-      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.created_at, cohort_date, FLOOR(TIMEDIFF(#{activity_table_name}.created_at, cohort_date)/#{time_conversion}) as periods_out"
+      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.#{activity_date_field}, cohort_date, FLOOR(TIMEDIFF(#{activity_table_name}.#{activity_date_field}, cohort_date)/#{time_conversion}) as periods_out"
     elsif ActiveRecord::Base.connection.instance_values["config"][:adapter] == "postgresql"
-      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.created_at, cohort_date, FLOOR(extract(epoch from (#{activity_table_name}.created_at - cohort_date))/#{time_conversion}) as periods_out"
+      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.#{activity_date_field}, cohort_date, FLOOR(extract(epoch from (#{activity_table_name}.#{activity_date_field} - cohort_date))/#{time_conversion}) as periods_out"
     else
       raise "database not supported"
     end
@@ -62,28 +62,21 @@ module CohortMe
       periods = []
       table[r[0]] = {}
 
-      cohort_hash.size.times{|i| periods << r[1].count{|d| d.periods_out.to_i == i} if r[1]} 
+      cohort_hash.size.times{|i| periods << r[1].count{|d| d.periods_out.to_i == i} if r[1]}
 
       table[r[0]][:count] = periods
       table[r[0]][:data] = r[1]
     end
-
-
     return table
-
   end
 
   def self.convert_to_cohort_date(datetime, interval)
     if interval == "weeks"
       return datetime.at_beginning_of_week.to_date
-      
     elsif interval == "days"
       return Date.parse(datetime.strftime("%Y-%m-%d"))
-
     elsif interval == "months"
       return Date.parse(datetime.strftime("%Y-%m-1"))
     end
   end
-
-
 end
