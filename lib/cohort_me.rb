@@ -42,16 +42,14 @@ module CohortMe
     end
 
     if %(mysql mysql2).include?(ActiveRecord::Base.connection.instance_values["config"][:adapter])
-      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.#{activity_date_field}, cohort_date, FLOOR(TIMEDIFF(#{activity_table_name}.#{activity_date_field}, cohort_date)/#{time_conversion}) as periods_out"
-    elsif ActiveRecord::Base.connection.instance_values["config"][:adapter] == "postgresql"
-      select_sql = "#{activity_table_name}.#{activity_user_id}, #{activity_table_name}.#{activity_date_field}, cohort_date, FLOOR(extract(epoch from (#{activity_table_name}.#{activity_date_field} - cohort_date))/#{time_conversion}) as periods_out"
+      select_sql = "DISTINCT #{activity_table_name}.#{activity_user_id}, cohort_date, FLOOR(DATEDIFF(DATE(#{activity_table_name}.#{activity_date_field}), DATE(cohort_date))*86400/#{time_conversion}) as periods_out"
     else
       raise "database not supported"
     end
 
     data = activity_class.where("#{activity_date_field} > ?", start_from).select(select_sql).joins("JOIN (" + cohort_query.to_sql + ") AS cohorts ON #{activity_table_name}.#{activity_user_id} = cohorts.#{activation_user_id}")
 
-    unique_data = data.all.uniq{|d| [d.send(activity_user_id), d.cohort_date, d.periods_out] }
+    unique_data = data.all
 
     analysis = unique_data.group_by{|d| convert_to_cohort_date(Time.parse(d.cohort_date.to_s), interval_name)}
     cohort_hash =  Hash[analysis.sort_by { |cohort, data| cohort }]
