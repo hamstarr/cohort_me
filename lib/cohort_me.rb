@@ -6,10 +6,10 @@ module CohortMe
 
     start_from_interval = options[:start_from_interval] || 12
     interval_name = options[:period] || "weeks"
-    activation_class = options[:activation_class] 
+    activation_class = options[:activation_class]
     activation_table_name = ActiveModel::Naming.plural(activation_class)
     activation_user_id = options[:activation_user_id] || "user_id"
-    activation_conditions = options[:activation_conditions] 
+    activation_conditions = options[:activation_conditions]
 
     activity_class = options[:activity_class] || activation_class
     activity_table_name = ActiveModel::Naming.plural(activity_class)
@@ -43,9 +43,13 @@ module CohortMe
 
     if %(mysql mysql2).include?(ActiveRecord::Base.connection.instance_values["config"][:adapter])
       select_sql = "DISTINCT #{activity_table_name}.#{activity_user_id}, cohort_date, FLOOR(DATEDIFF(DATE(#{activity_table_name}.#{activity_date_field}), DATE(cohort_date))*86400/#{time_conversion}) as periods_out"
+    elsif %(postgresql postgis).include?(ActiveRecord::Base.connection.instance_values["config"][:adapter])
+      select_sql = "DISTINCT #{activity_table_name}.#{activity_user_id}, cohort_date, FLOOR(extract(epoch from (#{activity_table_name}.#{activity_date_field} - DATE(cohort_date)))*86400/#{time_conversion}) as periods_out"
     else
       raise "database not supported"
     end
+
+
 
     data = activity_class.where("#{activity_date_field} > ?", start_from).select(select_sql).joins("JOIN (" + cohort_query.to_sql + ") AS cohorts ON #{activity_table_name}.#{activity_user_id} = cohorts.#{activation_user_id}")
 
@@ -53,7 +57,7 @@ module CohortMe
     cohort_hash =  Hash[analysis.sort_by { |cohort, data| cohort }]
 
     table = {}
-    cohort_hash.each do |r| 
+    cohort_hash.each do |r|
 
       periods = []
       table[r[0]] = {}
